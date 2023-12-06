@@ -7,6 +7,7 @@ from flask_login import UserMixin, login_user, LoginManager, current_user, logou
 from flask_sqlalchemy import SQLAlchemy
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
+import os
 from sqlalchemy.orm import relationship
 # Import your forms from the forms.py
 from forms import CreatePostForm, RegisterForm, LoginForm, CommentForm
@@ -25,22 +26,26 @@ This will install the packages from the requirements.txt for this project.
 '''
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = '8BYkEfBA6O6donzWlSihBXox7C0sKR6b'
+
+app.config['SECRET_KEY'] = os.environ.get("FLASK_KEY")
 ckeditor = CKEditor(app)
 Bootstrap5(app)
 
 # TODO: Configure Flask-Login
 login_manager = LoginManager()
 
+
 @login_manager.user_loader
 def load_user(user_id):
     return db.get_or_404(Users, ident=user_id)
 
+
 # CONNECT TO DB
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///posts.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DB_URI", "sqlite:///posts.db")
 db = SQLAlchemy()
 db.init_app(app)
 login_manager.init_app(app)
+
 
 # gravatar = Gravatar(app,
 #                     size=100,
@@ -54,11 +59,12 @@ login_manager.init_app(app)
 
 # TODO: Create a User table for all your registered users. 
 class Users(db.Model, UserMixin):
-    __tablename__ ="users"
+    __tablename__ = "users"
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(250), nullable=False)
-    userEmail = db.Column(db.String(250),nullable=False, unique=True)
-    password = db.Column(db.String(250),nullable=False)
+    userEmail = db.Column(db.String(250), nullable=False, unique=True)
+    password = db.Column(db.String(250), nullable=False)
+
 
 class BlogPost(db.Model):
     __tablename__ = "blog_posts"
@@ -71,20 +77,22 @@ class BlogPost(db.Model):
     author_id = db.Column(db.Integer, db.ForeignKey("users.id"))
     img_url = db.Column(db.String(250), nullable=False)
 
+
 class Comments(db.Model):
     __tablename__ = "comments"
     id = db.Column(db.Integer, primary_key=True)
-    comment_body = db.Column(db.Text, nullable = False)
+    comment_body = db.Column(db.Text, nullable=False)
     post_id = db.Column(db.Integer)
     author_id = db.Column(db.Integer, db.ForeignKey("users.id"))
-    users = db.relationship("Users",backref=db.backref('comments',lazy=True))
+    users = db.relationship("Users", backref=db.backref('comments', lazy=True))
+
 
 with app.app_context():
     db.create_all()
 
 
 # TODO: Use Werkzeug to hash the user's password when creating a new user.
-@app.route('/register',methods=["GET","POST"])
+@app.route('/register', methods=["GET", "POST"])
 def register():
     registerForm = RegisterForm()
     if request.method == "POST" and registerForm.validate_on_submit():
@@ -95,10 +103,10 @@ def register():
         queryData = db.session.execute(db.select(Users).filter_by(userEmail=formEmail))
         userInstance = queryData.scalar()
         if userInstance is None:
-            newUser= Users(
-                username= formUser,
-                userEmail= formEmail,
-                password = password
+            newUser = Users(
+                username=formUser,
+                userEmail=formEmail,
+                password=password
             )
             db.session.add(newUser)
             db.session.commit()
@@ -108,13 +116,13 @@ def register():
         elif userInstance:
             flash(f"{formEmail} already exists, please Login")
             return redirect(url_for("login"))
-    return render_template("register.html", form= registerForm)
+    return render_template("register.html", form=registerForm)
 
 
 # TODO: Retrieve a user from the database based on their email. 
 @app.route('/login', methods=["GET", "POST"])
 def login():
-    loginForm= LoginForm()
+    loginForm = LoginForm()
     if request.method == "POST" and loginForm.validate_on_submit():
 
         formEmail = loginForm.email.data
@@ -136,7 +144,6 @@ def login():
             # print("success")
             return redirect(url_for("get_all_posts"))
 
-
     return render_template("login.html", form=loginForm)
 
 
@@ -150,15 +157,15 @@ def logout():
 # home page
 @app.route('/')
 def get_all_posts():
-    if not current_user.is_authenticated: # user is not signed in
+    if not current_user.is_authenticated:  # user is not signed in
         result = db.session.execute(db.select(BlogPost))
         posts = result.scalars().all()
 
-    if current_user.is_authenticated and current_user.id > 2: # those users who wants to sign in as customers
+    if current_user.is_authenticated and current_user.id > 2:  # those users who wants to sign in as customers
         result = db.session.execute(db.select(BlogPost))
         posts = result.scalars().all()
 
-    if current_user.is_authenticated and current_user.id <=2: # user having admin, can do new post, delete post, or edit post
+    if current_user.is_authenticated and current_user.id <= 2:  # user having admin, can do new post, delete post, or edit post
         # print("home page: {fcurrent_user.username}")
         queryData = db.session.execute(db.select(BlogPost).filter_by(author=current_user.username))
         result = queryData.scalars().all()
@@ -169,10 +176,10 @@ def get_all_posts():
 
 
 # TODO: Allow logged-in users to comment on posts
-@app.route("/post/<int:post_id>", methods=["GET","POST"])
+@app.route("/post/<int:post_id>", methods=["GET", "POST"])
 def show_post(post_id):
     commentForm = CommentForm()
-    queryData = db.session.execute(db.select(Comments, Users).join(Comments.users).where(Comments.post_id==post_id))
+    queryData = db.session.execute(db.select(Comments, Users).join(Comments.users).where(Comments.post_id == post_id))
     allData = queryData.fetchall()
 
     # for comment, user in allData:
@@ -183,16 +190,16 @@ def show_post(post_id):
             flash("Please login First, Then comment")
         elif current_user.is_authenticated:
             newComment = Comments(
-                comment_body = commentForm.commentBody.data,
-                author_id = current_user.id,
-                post_id = post_id
+                comment_body=commentForm.commentBody.data,
+                author_id=current_user.id,
+                post_id=post_id
             )
             db.session.add(newComment)
             db.session.commit()
 
             pass
     requested_post = db.get_or_404(BlogPost, post_id)
-    return render_template("post.html", post=requested_post, form = commentForm, allData= allData)
+    return render_template("post.html", post=requested_post, form=commentForm, allData=allData)
 
 
 # TODO: Use a decorator so only an admin user can create a new post
@@ -207,7 +214,10 @@ def admin_required(function):
         except AttributeError:
             return abort(404)
         return function(*args, **kwargs)
-    return decorated_function # dont forget to remove parenthesis
+
+    return decorated_function  # dont forget to remove parenthesis
+
+
 # def admin_only(f):
 #     @wraps(f)
 #     def decorated_function(*args, **kwargs):
@@ -230,7 +240,7 @@ def add_new_post():
             body=form.body.data,
             img_url=form.img_url.data,
             author=current_user.username,
-            author_id = current_user.id,
+            author_id=current_user.id,
             date=date.today().strftime("%B %d, %Y")
         )
         db.session.add(new_post)
@@ -284,4 +294,4 @@ def contact():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5002)
+    app.run(debug=False)
